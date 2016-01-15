@@ -49,6 +49,7 @@ namespace RBC
 
         private bool shutDown_clientListener = false;
         private bool shutDown_clientRemover = false;
+        private int phoneClientCounter;
 
         public TcpIpCommunicationUnit(String pCommunicationName)
         {
@@ -71,8 +72,8 @@ namespace RBC
                 this.clientListenerThread.Start();
 
                 // Start thread to listening on removed clients
-                this.clientRemoverThread = new System.Threading.Thread(new System.Threading.ThreadStart(clientRemover));
-                this.clientRemoverThread.Start();
+                //this.clientRemoverThread = new System.Threading.Thread(new System.Threading.ThreadStart(clientRemover));
+               // this.clientRemoverThread.Start();
 
                 if (this.statusChangedEvent != null)
                     this.statusChangedEvent(this.communicationName + ": Server started. Listening for Clients at Port - " + this.networkConfig.port);
@@ -89,21 +90,30 @@ namespace RBC
             // Create threads for robot controller and phones
             this.clientRobotControllerThread = new System.Threading.Thread(new System.Threading.ThreadStart(receiveFromRobotController));
             //this.clientPhoneThread = new System.Threading.Thread(new System.Threading.ThreadStart(sendToPhone));
-
+            phoneClientCounter = 0;
             while (this.shutDown_clientListener == false)
             {
                 Debug.Write("Listening for new clients" + "\n");
                 // Listening for new client               
-                TcpClient tcpClient = tcpserver.AcceptTcpClient();
+                TcpClient tcpClientTemp = tcpserver.AcceptTcpClient();
 
                 // Receive name of client and add client to dictonary
-                string clientName = receiveClientName(tcpClient);
+                // If name already exist create another one
+                string clientName = receiveClientName(tcpClientTemp);
                 Debug.Write("clientName: " + clientName + "\n");
-                if (clientName.Length != 0) clientList.Add(clientName, tcpClient);
 
-                // Send answer to server that clientname is received
+                if (clientName.Equals("Phone"))
+                {
+                    clientName = clientName + phoneClientCounter.ToString();
+                    Debug.Write("clientName modified: " + clientName + "\n");
+                    clientList.Add(clientName, tcpClientTemp);
+                    phoneClientCounter += 1;
+                }
+                if (clientName.Equals("RobotController")) clientList.Add(clientName, tcpClientTemp);
+
+                // Send answer to client that clientname is received
                 Debug.Write("Call sendToPhone" + "\n");
-                sendToClient(":p:1;", tcpClient);
+                sendToClient(":p:1;", tcpClientTemp);
 
                 // Start new thread for robot controller
                 if (clientList.ContainsKey("RobotController") && !(this.clientRobotControllerThread.ThreadState == System.Threading.ThreadState.Running))
@@ -195,10 +205,15 @@ namespace RBC
         public void sendToPhone(string msg)
         {
             TcpClient tcpClientPhone;
-            clientList.TryGetValue("Phone", out tcpClientPhone);
 
+            // TODO: Maybe do this in another thread
             Debug.Write("Message for phone: " + msg);
-            sendToClient(msg, tcpClientPhone);
+            for (int i = 0; i <= phoneClientCounter-1; i++)
+            {
+                Debug.Write("Send to client: " + i.ToString() + "\n");
+                clientList.TryGetValue("Phone" + i.ToString(), out tcpClientPhone);
+                sendToClient(msg, tcpClientPhone);
+            }
             //while (this.shutDown == false)
             //{
             //    // Send data when new data is available

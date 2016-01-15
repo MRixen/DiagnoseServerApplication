@@ -10,6 +10,8 @@ using System.Windows.Forms;
 using System.Diagnostics;
 using System.Windows.Threading;
 using System.Windows.Forms.DataVisualization.Charting;
+using System.Drawing.Imaging;
+using System.Xml;
 
 
 namespace WindowsFormsApplication6
@@ -32,30 +34,48 @@ namespace WindowsFormsApplication6
         private bool pauseIsActive = false;
         private String machineName = "";
         private String projectName = "";
-        private int MAX_CYCLES = 500;
+        private int MAX_CYCLES = 50;
         private int MIN_CYCLES = 1;
-
+        private int cyclesToAcquire = 10;
+        private int currentCycle = 1;
+        private bool firtStart;
+        private string graphName = "x";
+        private NotifyIcon notifyIcon;
 
 
         public Diagnose()
         {
             InitializeComponent();
-
-           // label1.Text = "Bereich: " + MIN_X_INCREMENT + " - " + MAX_X_INCREMENT;
+            firtStart = false;
+            textBox1.Text = cyclesToAcquire.ToString();
+            // label1.Text = "Bereich: " + MIN_X_INCREMENT + " - " + MAX_X_INCREMENT;
+            notifyIcon = new NotifyIcon();
+            state_icon.BackColor = Color.OrangeRed;
         }
 
         private void setTitle(string name)
         {
+            this.graphName = name;
             Title title = chart1.Titles.Add("CycleTime of " + name);
             //title.Font = new System.Drawing.Font("Arial", 16, FontStyle.Bold);
+
+            
         }
 
-        private void button1_Click(object sender, EventArgs e)
+        private void startButtonClicked(object sender, EventArgs e)
         {
-            bool activeState = false;
+            cyclesToAcquire = Int32.Parse(textBox1.Text);
+            currentCycle = 0;
+            label_current_cycles.Text = "Cycles: " + currentCycle.ToString() + "/" + cyclesToAcquire;
+            if (cyclesToAcquire > MAX_CYCLES) cyclesToAcquire = MAX_CYCLES;
+            if (cyclesToAcquire < MIN_CYCLES) cyclesToAcquire = MIN_CYCLES;
+            
+            // Set state icon to active
+            state_icon.BackColor = Color.YellowGreen;
 
-            if (button1.Text.Equals("Start Acquisition"))
+            if (!firtStart)
             {
+                firtStart = true;
                 tcpDiagnoseServer = new RBC.TcpIpCommunicationUnit("DiagnoseServer");
                 //register the callbackevents from tcpservers
                 tcpDiagnoseServer.messageReceivedEvent += new RBC.TcpIpCommunicationUnit.MessageReceivedEventHandler(tcpDiagnoseServer_messageReceivedEvent);
@@ -63,23 +83,16 @@ namespace WindowsFormsApplication6
                 tcpDiagnoseServer.statusChangedEvent += new RBC.TcpIpCommunicationUnit.StatusChangedEventHandler(tcpDiagnoseServer_statusChangedEvent);
                 tcpDiagnoseServer.clientServerInit();
             }
-            // Change button to pause button
-            if (button1.Text.Equals("Pause Acquisition"))
+            // Clear graph if user press start button again
+            else
             {
-                pauseIsActive = true;
-                button1.Text = "Resume Acquisition";
-                activeState = true;
+                foreach (var series in chart1.Series) series.Points.Clear();
+                currentCycle = 1;
             }
-            if (button1.Text.Equals("Start Acquisition")) button1.Text = "Pause Acquisition";
-            if (button1.Text.Equals("Resume Acquisition") && !activeState)
-            {
-                pauseIsActive = false;
-                button1.Text = "Pause Acquisition";
-            }
-
         }
 
-        public void setButtonText(String text){
+        public void setButtonText(String text)
+        {
             button1.Text = text;
         }
 
@@ -90,7 +103,15 @@ namespace WindowsFormsApplication6
 
         private void UpdateChart(string[] msg)
         {
-            if(!pauseIsActive) setDataToGraph(msg);
+            Debug.Write("Counter: " + currentCycle.ToString() + "\n");
+            if (currentCycle <= cyclesToAcquire)
+            {
+                label_current_cycles.Text = "Cycles: " + currentCycle.ToString() + "/" + cyclesToAcquire;
+                setDataToGraph(msg);
+                currentCycle += 1;
+            }
+            // Set state icon to inactive
+            else state_icon.BackColor = Color.OrangeRed;
         }
 
         void tcpDiagnoseServer_statusChangedEvent(string statusMessage)
@@ -124,13 +145,13 @@ namespace WindowsFormsApplication6
         void tcpDiagnoseServer_messageReceivedEvent(string[] receivedMessage)
         {
             String command = receivedMessage[1];
-            //Debug.Write("message0: " + receivedMessage[0] + "\n");
-            //Debug.Write("message1: " + receivedMessage[1] + "\n");  
+            Debug.Write("message0: " + receivedMessage[0] + "\n");
+            Debug.Write("message1: " + receivedMessage[1] + "\n");  
             try
             {
                 switch (command)
-                {                         
-                 
+                {
+
                     case "c1x":
                         //Message for graph - actual value
                         String timeStamp = "";
@@ -143,12 +164,13 @@ namespace WindowsFormsApplication6
                             else timeStamp += message[i];
                         }
                         message[1] = timeStamp;
+                        Debug.Write("Run UpdatChart\n");
                         chart1.Invoke(new RBC.TcpIpCommunicationUnit.UpdateChartCallback(this.UpdateChart),
                         new object[] { message });
                         break;
                     case "c2x":
                         //Message for graph - mean value
-                        break; 
+                        break;
                     case "0":
                         machineName = receivedMessage[0];
                         break;
@@ -158,14 +180,14 @@ namespace WindowsFormsApplication6
                         break;
                     case "c1":
                         // Test
-                        
+
                         //tcpDiagnoseServer.messageForSmartphone = receivedMessage[0] + ":" + receivedMessage[1];
                         //Debug.Write("To phone: " + ":" + receivedMessage[1] + ":" + receivedMessage[0] + ";" + "\n");
                         break;
                     default:
                         //Send message to phone
                         break;
-            }
+                }
             }
             catch (InvalidOperationException e)
             {
@@ -194,12 +216,8 @@ namespace WindowsFormsApplication6
         //    //}
         //}
 
-        private void button2_Click(object sender, EventArgs e)
+        private void cyclesButtonClicked(object sender, EventArgs e)
         {
-            int cyclesToAcquire = Int32.Parse(textBox1.Text);
-            if (cyclesToAcquire > MAX_CYCLES) cyclesToAcquire = MAX_CYCLES;
-            if (cyclesToAcquire < MIN_CYCLES) cyclesToAcquire = MIN_CYCLES;
-
             //try
             //{
             //    int xAxisRateTemp = Int32.Parse(textBox1.Text);
@@ -221,10 +239,10 @@ namespace WindowsFormsApplication6
             series1.ChartType = SeriesChartType.Line;
             chart1.Series[0].BorderWidth = 3;
             chart1.ChartAreas[0].AxisY.Interval = 0.5;
-            chart1.ChartAreas[0].AxisX.Interval = 5;
+            chart1.ChartAreas[0].AxisX.Interval = 1;
             chart1.ChartAreas[0].AxisX.Title = "Time [hh:mm:ss]";
             chart1.ChartAreas[0].AxisY.Title = "Cycletime [s]";
-            chart1.ChartAreas[0].AxisX.MajorGrid.Interval = 2;
+            chart1.ChartAreas[0].AxisX.MajorGrid.Interval = 1;
 
             stopWatch2.Start();
 
@@ -247,11 +265,33 @@ namespace WindowsFormsApplication6
             {
                 tcpDiagnoseServer.closeAllConnections();
             }
+
+            if(notifyIcon != null) notifyIcon.Dispose();
         }
 
-        private void button3_Click(object sender, EventArgs e)
+        private void Snapshot_Click(object sender, EventArgs e)
         {
+            Rectangle bounds = this.Bounds;
+            using (Bitmap bitmap = new Bitmap(bounds.Width, bounds.Height))
+            {
+                using (Graphics g = Graphics.FromImage(bitmap))
+                {
+                    g.CopyFromScreen(new Point(bounds.Left, bounds.Top), Point.Empty, bounds.Size);
+                }
+                bitmap.Save("C://Users//Manuel.Rixen//Desktop//CycleTimeGraph_" + graphName + ".jpg", ImageFormat.Jpeg);
+            }
 
+
+
+            
+            notifyIcon.Visible = true;
+
+            notifyIcon.BalloonTipTitle = "Diagnose App";
+            notifyIcon.Icon = SystemIcons.Application;
+            notifyIcon.BalloonTipText = "Screenshot created succesfully";
+            notifyIcon.ShowBalloonTip(1000);
+            
         }
+
     }
 }
